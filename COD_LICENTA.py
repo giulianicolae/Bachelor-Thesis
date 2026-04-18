@@ -12,7 +12,6 @@ lista_coloane_df1 = ['claim', 'sci_digest', 'justification', 'issues', 'evidence
 lista_coloane_text_df1 = ['evidence', 'claim', 'sci_digest', 'justification', 'issues']
 
 
-
 # Pregatirea pentru curatare 
 def pregatire_dataframe(df):
     coloane_de_sters=['url','source','posted','author','image_data','visualization_bias']
