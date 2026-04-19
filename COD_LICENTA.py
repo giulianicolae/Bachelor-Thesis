@@ -1,72 +1,112 @@
+"""
+Nicolae Giulia Gabriela 
+Facultatea de Administratie si Afaceri, Universitatea din Bucuresti
+Specializarea Cibernetica, Statistică și Informatică Economică, anul III, 2025- 2026
+"""
+
+# Curatarea Seturilor de Date FinFact si RFC si pregatirea pentru antrenarea modelului NLP FinBert.
+# Curatarea este bazata prin metode precum: Regex, Label Encoding si Data Augumentation prin algoritmul Sliding Window.
+
 
 import pandas as pd
-import re # regular expressions 
+import re # regular expressions  
 
-# Crearea variabilei df care citeste fisierul excel
+# Crearea variabilelor df1 si df2 pentru a incarca seturile de date FinFact si RFC si afisarea initiala a seturilor
 df1 = pd.read_excel('finfact.xlsx')
-print(f"\n Afisarea setului de date initial: \n {df1.head(7)} ") 
+print(f"\n Afisarea setului de date FinFact initial: \n {df1.head(7)} ") 
+df2 = pd.read_excel('RFCdataset.xlsx')
+print(f"\n Afisarea setului de date RFC initial: \n {df2.head(7)} ")
 
-# df2 = pd.read_ urmeaza sa prelucrez RFC ---------------------------------------------
 
-lista_coloane_df1 = ['claim', 'sci_digest', 'justification', 'issues', 'evidence', 'label']
-lista_coloane_text_df1 = ['evidence', 'claim', 'sci_digest', 'justification', 'issues']
+# redenumirea variabilelor din RFC asemenea datelor din FinFact pentru un lucru constant cu seturile de date 
+mapare_coloane_RFC ={
+    'Ticker': 'ticker',
+    'Date' : 'posted',
+    'Link' : 'url',
+    'Perturbed' : 'claim'
+}
+df2 = df2.rename(columns=mapare_coloane_RFC)
+print(f"\n Afisarea setului de date RFC dupa redenumire: \n {df2.head(7)} ")
+
+
+lista_coloane_df1 = ['claim','posted','sci_digest','justification','issues','evidence','label']
+lista_coloane_text_df1 = [ 'claim', 'sci_digest', 'justification', 'issues','evidence']
+lista_coloane_df2 = ['ticker', 'posted', 'url', 'claim']
+lista_coloane_text_df2 = ['claim']
 
 
 # Pregatirea pentru curatare 
-def pregatire_dataframe(df):
-    coloane_de_sters=['url','source','posted','author','image_data','visualization_bias']
-    df= df[df['visualization_bias'].astype(str) !='1'] # stergere bias-uri vizuale deoarece nu pot fi procesate de modelul NLP
-                                                       #am transformat in string-uri pentru a asigura o comparatie corecta cu 1 pentru fiecare celula
-    df = df.drop(columns=coloane_de_sters) # eliminarea coloanelor irelevante analizei
-    df = df.dropna(subset=['claim', 'label', 'justification']) # eliminare randuri cu valori nule din coloanele esentiale pentru analiza
+def pregatire_dataframe(df, nume_set):
+    print (f"\n Se incepe prelucrarea pentru setul de date: {nume_set}")
+    print(f'\n Numarul initial de randuri este: {len(df)}')
+    coloane_de_sters=['url','source','author','image_data','visualization_bias']
+    
+    if 'visualization_bias' in df.columns:
+        df= df[df['visualization_bias'].astype(str) !='1']         # stergere randurile de stiri cu bias vizual
+    df = df.drop(columns=coloane_de_sters, errors='ignore')        # eliminare coloane irelevante analizei
+    
+    verific_valori_nule = ['claim', 'label', 'justification'] 
+    for col in verific_valori_nule:
+        if col in df.columns:
+            df = df.dropna(subset=[col]) # eliminare randuri cu valori nule din coloanele esentiale pentru analiza
+           
     print(f"Numarul de duplicate gasite este: {df.duplicated(subset=['claim']).sum()}") #verific existenta claim-urilor duplicate
     df = df.drop_duplicates(subset=['claim'])
-    print(f"Numarul de randuri ramase este: {len(df)}")
     return df
 
-df1 = pregatire_dataframe(df1)
-print(df1.head(7))
+df1 = pregatire_dataframe(df1 , 'FinFact')
+print(f'\n Coloanele ramase dupa curatarea setului FinFact: \n {df1.head(7)}')
+df2 = pregatire_dataframe(df2 , 'RFC')
+print(f'\n Coloanele ramase dupa curatarea setului RFC: \n {df2.head(7)}')
 
 
 
-def procesare_text(text):
+#Curatarea continutului din coloanele de tip text 
+def procesare_text(text):        
     if not isinstance(text, str): 
         return ""
-     
-    if "'sentence':" in text:
-        gasit = re.findall(r"'sentence':\s*\"(.*?)\"|'sentence':\s*'(.*?)'", text) # Extrag textul din 'sentence': "..." sau 'sentence': '...' folosind regex, pt a elimina structura de tip dictionar ( fiind un fisier initial extras de tip json)
-        text = " ; ".join([s[0] if s[0] else s[1] for s in gasit])                 # Daca exista mai multe fraze, le lipesc cu punct si virgula intre ele
+    
+    # elimin structura de tip json si extrag continutul aflat dupa 'sentence': "..." sau 'sentence': '...' folosind regex 
+    if "'sentence':" in text: 
+        gasit = re.findall(r"'sentence':\s*\"(.*?)\"|'sentence':\s*'(.*?)'", text) 
+        text = " ; ".join([s[0] if s[0] else s[1] for s in gasit])    # daca exista mai multe fraze le lipesc cu punct si virgula intre ele
         
     #sterg blocuri de text
-    text = re.sub(r'https?://\S+', '', text)             # eliminare URL-uri
+    text = re.sub(r'https?://\S+', '', text)             # stergere link-uri
     text = re.sub(r'ISBN\s?[\d-]{10,17}', '', text)      # eliminare coduri ISBN
-    text = re.sub(r'Accessed\s+\d{1,2}\s+[a-zA-Z.]+\s+\d{4}', '', text) # eliminare referinte de tip data de accesare a surselor
-    text = re.sub(r'(?i)Sources\s?:?.*', '', text)   # eliminare tot care incep cu "Sources" urmate de orice text
-    text = re.sub(r'Screengrab/[^;?!\.]+', '', text) # eliminare referinte la screengrab care apar in justificari
-    text = re.sub(r'(?i)Sources\s?:?.*', '', text) # sterg "sources"
+    text = re.sub(r'Accessed\s+\d{1,2}\s+[a-zA-Z.]+\s+\d{4}', '', text) # eliminare referinte de accesare
+    text = re.sub(r'Screengrab/[^;?!\.]+', '', text)     # eliminare referinte la screengrab care apar in justificari
+    text = re.sub(r'(?i)Sources\s?:?.*', '', text)       # sterg "sources"
     text = re.sub(r'\(pp?\.?[\d,\s-]+\)', '', text)      # eliminare referinte la pagini
     text = re.sub(r'\(\d{4}\)', '', text)                # eliminare ani din paranteze 
-    regex_date = r'\b(?:\d{1,2}\s+)?(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}\b|\b\d{1,2}/\d{1,2}/\d{2,4}\b'
-    text = re.sub(regex_date, '', text)
+    luni = r'Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?' #lista luni
+    regex_date = (
+    r'\b(?:\d{1,2}\s+)?(?:' + luni + r')\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?\b|' # Dec 29, 2022 sau 29 Dec 2022
+    r'\b\d{1,2}[/.]\d{1,2}[/.]\d{2,4}\b|'                                                # 29/12/2022 sau 29.12.22
+    r'\b\d{4}-\d{1,2}-\d{1,2}\b')                                                        # 2022-12-29 (Format ISO)
+    text = re.sub(regex_date, '', text)                  # stergerea datelor indiferent de formatul in care apar
     
     #sterg punctuatia in plus
     text = text.replace('\\ ;', ';').replace('\\', '')   # eliminare backslash-uri care pot aparea in urma exportului datelor
     text = re.sub(r'[@#^&*]', '', text)                  # sterg simboluri speciale 
-    text = re.sub(r'\s\.\s', ' ', text)                  # sterg punctuatia izolata ramasa dupa curatare
     
     #sterg cazurile de punctuatie ramasa dupa curatarea de zgomot
-    text = re.sub(r'^[.,;!?\s]+', '', text)          # eliminare semne de punctuatie sau spatii la inceputul textului
-    text = re.sub(r'^\[|\]$', '', text)              # eliminare paranteze drepte la inceputul sau sfarsitul textului
+    text = re.sub(r'^[.,;!?\s]+', '', text)          # curat semne de punctuatie sau spatii la inceputul textului
+    text = re.sub(r'^\[|\]$', '', text)              # sterg paranteze drepte la inceputul sau sfarsitul textului
     text = re.sub(r'\s+([.,;!?])', r'\1', text)      # lipesc semnele de punctuatie de cuvantul dinaintea lor
-    text = re.sub(r'( ;)+', ' ; ', text)                  # sa ramana un singur semn de punct si virgula intre fraze
+    text = re.sub(r'(\s*\.\s*){2,}', '. ', text)     # inlocuire secvente de puncte multiple cu un singur punct
+    text = re.sub(r'( ;)+', ' ; ', text)             # sa ramana un singur semn de punct si virgula intre fraze 
+    text = re.sub(r'\s+', ' ', text).strip()         # inlocuire spatii multiple cu un singur spatiu si eliminare spatii la inceputul si sfarsitul textului
+    text = re.sub(r'[.,;!?]\s*([.,;!?])', r'\1', text) # daca am mai multe semne de punctuatie la finalul textului, pastrez doar ultimul semn
     text = re.sub(r'([,;!?])\s*\1+', r'\1', text)    # inlocuire secvente de semne de punctuatie repetate cu un singur semn
-    text = re.sub(r'(\s*\.\s*){2,}', '. ', text)          # inlocuire secvente de puncte multiple cu un singur punct
-    text = re.sub(r'\s+', ' ', text).strip()             # inlocuire spatii multiple cu un singur spatiu si eliminare spatii la inceputul si sfarsitul textului
+    text = re.sub(r'[.,;:&*\s]+$', '', text)         # la sfarsitul textului inlocuiesc semnele de punctuatie irelevante cu punct
+    text = re.sub(r'\s\.\s', ' ', text)              # sterg punctuatia izolata ramasa dupa curatare
+    if text:
+        text += "."
     
-    if len(text) > 0:                    # transform prima litera in majuscula pentru aspect final text, daca celula nu e goala 
+    if len(text) > 0:                                # transform prima litera in majuscula pentru aspect final text, daca celula nu e goala 
         text = text[0].upper() + text[1:]
     return text
-
 
 
 # Curatarea universala a seturilor de date - eliminare zgomot din celule
@@ -78,19 +118,23 @@ def curatare_universala(df, lista_coloane_text_df1):
             
     return df
 
-
-df1 = curatare_universala(curatare_universala(df1, lista_coloane_text_df1), lista_coloane_text_df1)
+df1 = curatare_universala(df1, lista_coloane_text_df1)
+df2 = curatare_universala(df2, lista_coloane_text_df2)
 print(df1.at[20, 'justification'])
 
 
-def analiza_statistica(df1, coloana='justification'):
-    print(f"\n Statistica lungimii cuvintelor pentru {coloana} ")
+# Vizualizarea analizei statistice a lungimii cuvintelor din variabila justificari 
+def analiza_statistica(df1, coloana, nume_set):
+    print(f"\n Statistica lungimii cuvintelor pentru variabila {coloana} din setul de date {nume_set}")
     print(df1[coloana].str.split().str.len().describe())
 
-analiza_statistica(df1, 'justification')
+analiza_statistica(df1, 'justification' , 'FinFact')
+analiza_statistica(df1, 'claim' , 'FinFact')
+analiza_statistica(df2, 'claim' , 'RFC')
 
-# ALGORITMUL SLIDING WINDOW
-# Data augumentation - sliding window pentru justificari
+
+# Algoritmul Sliding Window
+# Data Augumentation - sliding window pentru justificari
 def sliding_window(text, window_size=400, step=300):
         words = str(text).split()
         if len(words) <= window_size: 
@@ -103,7 +147,9 @@ def sliding_window(text, window_size=400, step=300):
             if i + window_size >= len(words):
                 break #daca ajung la finalul textului, ma opresc
         return windows
-
+    
+    
+    
 #Aplicarea algoritmului Sliding Window pe justificari si construirea unui nou dataframe cu textele si etichetele rezultate
 def aplicare_sw(df, tinta='justification'):
     lista_randuri_noi = [] # Aici vom stoca randuri intregi, nu doar bucati de text
@@ -139,5 +185,9 @@ def label_encoding(df):
 
 df1_final = label_encoding(df1_final)
 
-df1_final.to_csv('finfact_curatat.csv', index=False)
-print("Setul de date curatat a fost salvat in finfact_curatat.csv")
+print("\nSe salveaza seturile de date curatate in fisiere CSV...\n")
+df1_final.to_csv('finfact_curatat.csv', index=False, encoding='utf-8-sig')
+print("\nSetul de date FinFact curatat a fost salvat in finfact_curatat.csv\n")
+df2.to_csv('rfc_curatat.csv', index=False, encoding='utf-8-sig')
+print("\nSetul de date RFC curatat a fost salvat in rfc_curatat.csv\n")
+print("\nSeturile de date curatate sunt gata pentru a fi folosite in etapa de antrenare a modelului NLP FinBert\n")
