@@ -3,22 +3,20 @@ Nicolae Giulia Gabriela
 Facultatea de Administratie si Afaceri, Universitatea din Bucuresti
 Specializarea Cibernetica, Statistică și Informatică Economică, anul III, 2025- 2026
 """
-
 # Curatarea Seturilor de Date FinFact si RFC si pregatirea pentru antrenarea modelului NLP FinBert.
 # Curatarea este bazata prin metode precum: Regex, Label Encoding si Data Augumentation prin algoritmul Sliding Window.
-
 
 import pandas as pd
 import re # regular expressions  
 
-# Crearea variabilelor df1 si df2 pentru a incarca seturile de date FinFact si RFC si afisarea initiala a seturilor
+# creare variabile df1 si df2 pentru a incarca seturile de date FinFact si RFC si afisarea initiala a seturilor
 df1 = pd.read_excel('finfact.xlsx')
 print(f"\n Afisarea setului de date FinFact initial: \n {df1.head(7)} ") 
 df2 = pd.read_excel('RFCdataset.xlsx')
 print(f"\n Afisarea setului de date RFC initial: \n {df2.head(7)} ")
 
 
-# redenumirea variabilelor din RFC asemenea datelor din FinFact pentru un lucru constant cu seturile de date 
+# redenumire variabile din RFC asemenea datelor din FinFact pentru un lucru constant cu seturile de date 
 mapare_coloane_RFC ={
     'Ticker': 'ticker',
     'Date' : 'posted',
@@ -186,7 +184,7 @@ def label_encoding(df):
 df1_final = label_encoding(df1_final)
 
 print("\nSe salveaza seturile de date curatate in fisiere CSV...\n")
-df1_final.to_csv('finfact_curatat.csv', index=False, encoding='utf-8-sig')
+df1_final.to_csv('finfact_curatat.csv',index=False, encoding='utf-8-sig')
 print("\nSetul de date FinFact curatat a fost salvat in finfact_curatat.csv\n")
 df2.to_csv('rfc_curatat.csv', index=False, encoding='utf-8-sig')
 print("\nSetul de date RFC curatat a fost salvat in rfc_curatat.csv\n")
