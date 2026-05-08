@@ -1,22 +1,17 @@
-"""
-Nicolae Giulia Gabriela 
-Facultatea de Administratie si Afaceri, Universitatea din Bucuresti
-Specializarea Cibernetica, Statistică și Informatică Economică, anul III, 2025- 2026
-"""
-# Curatarea Seturilor de Date FinFact si RFC si pregatirea pentru antrenarea modelului NLP FinBert.
-# Curatarea este bazata prin metode precum: Regex, Label Encoding si Data Augumentation prin algoritmul Sliding Window.
-
+# Curatarea seturilor de date FinFact si RFC si pregatirea pentru antrenarea modelului NLP 
 import pandas as pd
 import re # regular expressions  
+from rapidfuzz import process, fuzz
 
-# creare variabile df1 si df2 pentru a incarca seturile de date FinFact si RFC si afisarea initiala a seturilor
+
+# Crearea variabilelor df1 si df2
 df1 = pd.read_excel('finfact.xlsx')
-print(f"\n Afisarea setului de date FinFact initial: \n {df1.head(7)} ") 
 df2 = pd.read_excel('RFCdataset.xlsx')
-print(f"\n Afisarea setului de date RFC initial: \n {df2.head(7)} ")
+print(f"\n Setul de date FinFact initial: \n {df1.head(10)} ") 
+print(f"\n Setul de date RFC initial: \n {df2.head(10)} ")
 
 
-# redenumire variabile din RFC asemenea datelor din FinFact pentru un lucru constant cu seturile de date 
+# Normalizarea variabilelor din RFC 
 mapare_coloane_RFC ={
     'Ticker': 'ticker',
     'Date' : 'posted',
@@ -24,9 +19,10 @@ mapare_coloane_RFC ={
     'Perturbed' : 'claim'
 }
 df2 = df2.rename(columns=mapare_coloane_RFC)
-print(f"\n Afisarea setului de date RFC dupa redenumire: \n {df2.head(7)} ")
+print(f"\n Setul de date RFC dupa redenumirea variabilelor: \n {df2.head(5)} ")
 
 
+#Listele variabilelor vor fi folosite la curatarea seturilor de date
 lista_coloane_df1 = ['claim','posted','sci_digest','justification','issues','evidence','label']
 lista_coloane_text_df1 = [ 'claim', 'sci_digest', 'justification', 'issues','evidence']
 lista_coloane_df2 = ['ticker', 'posted', 'url', 'claim']
@@ -34,30 +30,96 @@ lista_coloane_text_df2 = ['claim']
 
 
 # Pregatirea pentru curatare 
-def pregatire_dataframe(df, nume_set):
-    print (f"\n Se incepe prelucrarea pentru setul de date: {nume_set}")
+def curatare_dataframe(df, nume_set):
+    print (f"\n Se prelucreaza setul de date: {nume_set}")
     print(f'\n Numarul initial de randuri este: {len(df)}')
-    coloane_de_sters=['url','source','author','image_data','visualization_bias']
     
+    #stergere randuri cu bias vizual
     if 'visualization_bias' in df.columns:
-        df= df[df['visualization_bias'].astype(str) !='1']         # stergere randurile de stiri cu bias vizual
-    df = df.drop(columns=coloane_de_sters, errors='ignore')        # eliminare coloane irelevante analizei
+        df= df[df['visualization_bias'].astype(str) !='1']         
     
+    #eliminare coloane irelevante analizei
+    coloane_de_sters=['url','source','author','image_data','visualization_bias']
+    df = df.drop(columns=coloane_de_sters, errors='ignore')
+    
+    #eliminare randuri cu valori nule in coloanele esentiale pentru analiza
     verific_valori_nule = ['claim', 'label', 'justification'] 
     for col in verific_valori_nule:
         if col in df.columns:
-            df = df.dropna(subset=[col]) # eliminare randuri cu valori nule din coloanele esentiale pentru analiza
+            df = df.dropna(subset=[col]) 
            
-    print(f"Numarul de duplicate gasite este: {df.duplicated(subset=['claim']).sum()}") #verific existenta claim-urilor duplicate
+    #print(f"Numarul de duplicate gasite este: {df.duplicated(subset=['claim']).sum()}") #verific existenta claim-urilor duplicate
     df = df.drop_duplicates(subset=['claim'])
     return df
 
-df1 = pregatire_dataframe(df1 , 'FinFact')
+df1 = curatare_dataframe(df1 , 'FinFact')
+df2 = curatare_dataframe(df2 , 'RFC')
 print(f'\n Coloanele ramase dupa curatarea setului FinFact: \n {df1.head(7)}')
-df2 = pregatire_dataframe(df2 , 'RFC')
 print(f'\n Coloanele ramase dupa curatarea setului RFC: \n {df2.head(7)}')
 
 
+def elimina_duplicate_fuzzy(df, coloana='claim', prag=90):
+    print(f"Se prelucreaza duplicatele fuzzy de pe coloana: {coloana}")
+    initial_len = len(df)
+    
+    df = df.reset_index(drop=True)
+    indice_de_sters = set()
+    claims = df[coloana].tolist()
+    
+    for i in range(len(claims)):
+        if i in indice_de_sters:
+            continue
+
+        matches = process.extract(claims[i], claims[i+1:], scorer=fuzz.token_sort_ratio, score_cutoff=prag)
+        
+        for match in matches:
+            real_index = i + 1 + match[2]
+            indice_de_sters.add(real_index)
+
+    df = df.drop(index=list(indice_de_sters))
+    print(f"S-au eliminat {initial_len - len(df)} duplicate semantice.")
+    return df
+
+df1 = elimina_duplicate_fuzzy(df1, prag=90)
+df2 = elimina_duplicate_fuzzy(df2, prag=90)
+print("\nDimensiunile finale ale seturilor de date sunt:")
+print(f"Dimensiune finala FinFact dupa stergerea duplicatelor fuzzy: {len(df1)} ")
+print(f"Dimensiune finala RFC dupa stergerea duplicatelor fuzzy: {len(df2)}")
+
+
+
+def issues (df):
+    if 'issues' in df.columns:
+        df['issues'] = df['issues'].fillna('')
+    
+    cuvinte_biased = ['Abortion','Afghanistan','Animals','Ask PolitiFact','Baseball', 'Bush Administration', 'California', 
+                        'Campaign Finance', 'Candidate Biography', 'Children', 'China', 'City Government', 'City Rights', 'Climate Change', 'County Government', 
+                        'Crime', 'Criminal Justice', 'Disability', 'Elections', 'Facebook Fact-checks', 'Families', 'Florida', 'Food', 'Food Safety', 'Gambling', 'Georgia', 
+                        'Guns', 'Human Rights', 'Illinois', 'Immigration', 'Iran', 'Iraq','Legal Issues','Marijuana', 'Marriage', 'Message Machine 2010', 'Message Machine 2012', 
+                        'Message Machine 2014', 'Missouri', 'National', 'Negative Campaigning', 'New Hampshire 2012', 'New Hampshire', 'New Jersey', 'New York', 
+                        'North Carolina', 'Ohio', 'Oregon', 'Patriotism', 'Pennsylvania', 'Polls and Public Opinion', 'Pop Culture', 'PunditFact', 'Race and Ethnicity', 
+                        'Recreation', 'Religion', 'Rhode Island', 'Russia', 'Sports', 'States', 'Tennessee', 'Texas', 'The 2018 Calivornia Governors Race', 
+                        'This Week - ABC News', 'Tourism', 'Ukraine', 'Vermont','Voting Record', 'West Virginia', 'Wisconsin', 'Women', 'Workers']
+    #Curat formatarea de tip lista
+    df['issues'] = df['issues'].str.replace(r'^\[|\]$', '', regex=True)
+    df['issues'] = df['issues'].str.replace(r"['\"]", "", regex=True)
+    
+    # Stergerea cuvintelor biased din variabila issues pentru a ramane doar cu probleme financiare pe care vreau care vreau sa le pun in model ca metadate
+    pattern = r'\b(?:' + '|'.join(cuvinte_biased) + r')\b'
+    df['issues'] = df['issues'].str.replace(pattern, '', regex=True, flags=re.IGNORECASE)
+    
+    df['issues'] = df['issues'].str.replace(';', ',') # transform ; in ,
+    df['issues'] = df['issues'].str.replace(r'\.+$', '', regex=True) # elimin punctele de la final adaugate prin metoda regex din functia de curatare
+    df['issues'] = df['issues'].str.replace(r',\s*,', ',', regex=True) # transform virgulele duble intr-o singura virgula
+    df['issues'] = df['issues'].str.replace(r'^[\s,]+|[\s,]+$', '', regex=True) # sterg spatiile duble de la inceputul sau sfarsitul celulei
+    df['issues'] = df['issues'].str.replace(r',(?=[^\s])', ', ', regex=True) # pun spatiu dupa virgula daca lipseste
+    df['issues'] = df['issues'].str.replace(r'\s+', ' ', regex=True).str.strip() # elimin spatiile multiple
+    
+    return df    
+
+df1 = issues(df1)
+print('\n Afisarea coloanei Issues \n')
+print(df1['issues'].head(301))
 
 #Curatarea continutului din coloanele de tip text 
 def procesare_text(text):        
@@ -107,6 +169,34 @@ def procesare_text(text):
     return text
 
 
+def curatare_rfc(df):
+    if 'claim' not in df.columns:
+        return df
+    
+    print("Se repara caracterele corupte din setul RFC...")
+    
+    # dictionar de traducere a secventelor corupte in caracterele corecte
+    reparatii = {
+        "â€™": "'",     
+        "â€œ": '"',     
+        "â€": '"',     
+        "â€\x9d": '"',  
+        "â€”": "—",     
+        "â€“": "–",     
+        "â€¦": "...",   
+        "_x000D_": " ", # caracter Excel pentru Newline
+        "\n": " ",      # newline-uri reale care rup textul
+        "Â": ""         
+    }
+    
+    for gresit, corect in reparatii.items():
+        df['claim'] = df['claim'].astype(str).str.replace(gresit, corect, regex=False)
+    
+    return df
+
+df2 = curatare_rfc(df2)
+
+
 # Curatarea universala a seturilor de date - eliminare zgomot din celule
 def curatare_universala(df, lista_coloane_text_df1):
     for col in lista_coloane_text_df1:
@@ -118,7 +208,14 @@ def curatare_universala(df, lista_coloane_text_df1):
 
 df1 = curatare_universala(df1, lista_coloane_text_df1)
 df2 = curatare_universala(df2, lista_coloane_text_df2)
+'''
 print(df1.at[20, 'justification'])
+print(df1.at[20, 'issues'])
+print(df1.at[220, 'issues'])
+print(df1.at[140, 'issues'])
+print(df1.at[3, 'issues'])
+print(df1.at[2260, 'issues'])
+'''
 
 
 # Vizualizarea analizei statistice a lungimii cuvintelor din variabila justificari 
@@ -174,6 +271,36 @@ def aplicare_sw(df, tinta='justification'):
 df1_final = aplicare_sw(df1, tinta='justification')
 
 
+
+def lustruire_finala_justification(text):
+    if not isinstance(text, str) or not text:
+        return ""
+
+    # sterg cuvintele de legatura dela finalul paragrafului care a fost truncat
+    cuvinte_legatura = r'\b(?:and|but|or|tho|though|yet|with|so|for|if|then|because|although)\b\s*$'
+    text = re.sub(cuvinte_legatura, '', text, flags=re.IGNORECASE).strip()
+
+    # sterg semnele de punctuatie (de pauza) ramase la finalul sau la inceputul unui fragmet taiat
+    text = re.sub(r'^[ :;,\-]+', '', text)
+    text = re.sub(r'[ :;,\-]+$', '', text)
+
+    # inlocuiesc secventele de doua semne de punctuatie doar cu al doilea semn
+    while re.search(r'[.,;!?]\s*[.,;!?]', text):
+        text = re.sub(r'[.,;!?]\s*([.,;!?])', r'\1', text)
+
+    # sterg spatiul ramas la finalul textului
+    text = text.rstrip()
+
+    # prima litera devine majuscula
+    if text:
+        text = text[0].upper() + text[1:]
+        
+    return text
+
+print("Lustruirea finala a coloanei justification a fost efectuata.")
+df1_final['justification'] = df1_final['justification'].apply(lustruire_finala_justification)
+
+
 # Label encoding
 def label_encoding(df):
     label_map = {'false': 0, 'true': 1, 'neutral': 2} # Creare Dictionar pentru label encoding
@@ -183,9 +310,21 @@ def label_encoding(df):
 
 df1_final = label_encoding(df1_final)
 
+# Fortez coloanele sa fie tipul corect 
+df1_final['label_encoded'] = df1_final['label_encoded'].astype(int)
+df1_final['claim'] = df1_final['claim'].astype(str)
+df1_final['justification'] = df1_final['justification'].astype(str)
+
+
 print("\nSe salveaza seturile de date curatate in fisiere CSV...\n")
 df1_final.to_csv('finfact_curatat.csv',index=False, encoding='utf-8-sig')
 print("\nSetul de date FinFact curatat a fost salvat in finfact_curatat.csv\n")
 df2.to_csv('rfc_curatat.csv', index=False, encoding='utf-8-sig')
 print("\nSetul de date RFC curatat a fost salvat in rfc_curatat.csv\n")
 print("\nSeturile de date curatate sunt gata pentru a fi folosite in etapa de antrenare a modelului NLP FinBert\n")
+
+
+#verificare finala a fistributiei
+print("\nDistributia finala a stririlor in functie de label:")
+print(df1_final['label'].value_counts())
+print(df1_final['label'].value_counts(normalize=True) * 100) # Procente
